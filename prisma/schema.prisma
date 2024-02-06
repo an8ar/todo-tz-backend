@@ -1,0 +1,53 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Todo {
+  id          Int        @id @default(autoincrement())
+  topic       String
+  description String
+  status      Status     @default(ToDo)
+  createdAt   DateTime   @default(now())
+  userId      Int
+  User        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  TodoTags    TodoTags[]
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  email    String @unique
+  password String
+  todos    Todo[]
+  Tags     Tags[]
+}
+
+model Tags {
+  id       Int        @id @default(autoincrement())
+  name     String
+  userId   Int
+  TodoTags TodoTags[]
+  User     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TodoTags {
+  todoId Int
+  tagId  Int
+  Tags   Tags @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  Todos  Todo @relation(fields: [todoId], references: [id], onDelete: Cascade)
+
+  @@id([todoId, tagId])
+}
+
+enum Status {
+  ToDo
+  InProgress
+  Done
+}

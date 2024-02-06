@@ -1,0 +1,55 @@
+stages:
+  - build
+  - package
+  - deploy
+
+variables:
+  APP_VERSION: $CI_PIPELINE_IID
+
+build website:
+  image: node:20-alpine
+  stage: build
+  artifacts:
+    paths:
+      - dist
+  script:
+    - yarn
+    - yarn build
+    - yarn lint
+    - echo $APP_VERSION > dist/version.html
+build docker image:
+  stage: package
+  image: docker
+  services:
+    - docker:dind
+  script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE -t $CI_REGISTRY_IMAGE:$APP_VERSION .
+    - docker image ls
+    - docker push --all-tags $CI_REGISTRY_IMAGE
+
+.deploy:
+  image:
+    name: amazon/aws-cli:2.15.12
+    entrypoint: ['']
+  variables:
+    APP_NAME: first-project
+    APP_ENV_NAME: First-project-env
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  script:
+    - aws --version
+    - yum install -y gettext
+    - export DEPLOY_TOKEN=$(echo $GITLAB_DEPLOY_TOKEN | tr -d "\n" | base64)
+    - envsubst < src/templates/Dockerrun.aws.json > Dockerrun.aws.json
+    - envsubst < src/templates/auth.json > auth.json
+    - cat Dockerrun.aws.json
+    - cat auth.json
+    - aws s3 cp Dockerrun.aws.json s3://$AWS_S3_BUCKET/Dockerrun.aws.json
+    - aws s3 cp auth.json s3://$AWS_S3_BUCKET/auth.json
+    - aws elasticbeanstalk create-application-version --application-name "$APP_NAME" --version-label $APP_VERSION --source-bundle S3Bucket=$AWS_S3_BUCKET,S3Key=Dockerrun.aws.json
+    - aws elasticbeanstalk update-environment --application-name "$APP_NAME" --version-label $APP_VERSION --environment-name $APP_ENV_NAME
+deploy to production:
+  stage: deploy
+  environment: production
+  extends: .deploy
